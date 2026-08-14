@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmileNet Wi-Fi Call</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #001220; margin: 0; padding: 15px; }
+        .card { background: #ffffff; width: 100%; max-width: 340px; padding: 24px; border-radius: 24px; text-align: center; }
+        .brand { font-size: 20px; font-weight: bold; color: #0070ba; margin-bottom: 2px; }
+        .sub-brand { font-size: 11px; color: #666; margin-bottom: 12px; }
+        .badge { background: #e8f4fc; color: #005691; padding: 8px 16px; border-radius: 20px; font-size: 15px; font-weight: bold; display: inline-block; margin-bottom: 12px; }
+        .screen { background: #f8f9fa; border: 1.5px solid #dee2e6; border-radius: 10px; padding: 8px 12px; font-size: 24px; font-weight: bold; margin-bottom: 15px; height: 48px; display: flex; justify-content: space-between; align-items: center; }
+        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+        .key { background: #f1f3f5; border: none; height: 52px; border-radius: 50%; font-size: 20px; font-weight: bold; cursor: pointer; color: #212529; }
+        .key:active { background: #ced4da; }
+        .btn-call { width: 100%; padding: 14px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        #in-call-panel, #incoming-panel { display: none; background: #f8f9fa; border-radius: 16px; padding: 16px; margin-top: 10px; border: 1px solid #e9ecef; }
+        .call-timer { font-size: 26px; font-weight: bold; color: #0070ba; margin: 8px 0; }
+        .call-controls { display: flex; justify-content: space-around; gap: 10px; margin-top: 15px; }
+        .btn-action { flex: 1; padding: 12px; border: none; border-radius: 12px; font-size: 14px; font-weight: bold; cursor: pointer; }
+        .btn-speaker { background: #e9ecef; color: #333; }
+        .btn-speaker.muted { background: #ffc107; color: #000; }
+        .btn-hangup { background: #dc3545; color: white; }
+        .btn-accept { background: #28a745; color: white; }
+        #status { font-size: 12px; color: #6c757d; margin-top: 12px; }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <div class="card">
+        <div class="brand">SmileNet Network</div>
+        <div class="sub-brand">Voucher မလိုဘဲ အချင်းချင်း အခမဲ့ ဖုန်းခေါ်စနစ်</div>
+
+        <div class="badge">သင့် Wi-Fi နံပါတ်: <span id="my-num">ရယူနေသည်...</span></div>
+
+        <div id="dialer-section">
+            <div class="screen">
+                <span id="display-num" style="width:100%; text-align:center;"></span>
+                <button onclick="delDigit()" style="background:none; border:none; color:#888; font-size:20px;">⌫</button>
+            </div>
+
+            <div class="keypad">
+                <button class="key" onclick="press('1')">1</button>
+                <button class="key" onclick="press('2')">2</button>
+                <button class="key" onclick="press('3')">3</button>
+                <button class="key" onclick="press('4')">4</button>
+                <button class="key" onclick="press('5')">5</button>
+                <button class="key" onclick="press('6')">6</button>
+                <button class="key" onclick="press('7')">7</button>
+                <button class="key" onclick="press('8')">8</button>
+                <button class="key" onclick="press('9')">9</button>
+                <button class="key" onclick="press('*')">*</button>
+                <button class="key" onclick="press('0')">0</button>
+                <button class="key" onclick="press('#')">#</button>
+            </div>
+
+            <button id="call-btn" class="btn-call" onclick="makeCall()">📞 အခမဲ့ ဖုန်းခေါ်မည်</button>
+        </div>
+
+        <div id="incoming-panel">
+            <div style="font-size: 15px; font-weight: bold; color: #333;" id="caller-name">ဖုန်းဝင်လာပါသည်...</div>
+            <div class="call-controls">
+                <button class="btn-action btn-accept" onclick="acceptIncomingCall()">📞 လက်ခံမည်</button>
+                <button class="btn-action btn-hangup" onclick="rejectIncomingCall()">📴 ငြင်းမည်</button>
+            </div>
+        </div>
+
+        <div id="in-call-panel">
+            <div style="font-size: 13px; color: #555;">ဖုန်းပြောနေပါသည် 🟢</div>
+            <div class="call-timer" id="timer">00:00</div>
+            <div class="call-controls">
+                <button id="speaker-btn" class="btn-action btn-speaker" onclick="toggleSpeaker()">
+                    <span id="speaker-icon">🔊</span> <span id="speaker-text">စပီကာ ဖွင့်</span>
+                </button>
+                <button class="btn-action btn-hangup" onclick="hangUp()">📴 ဖုန်းချမည်</button>
+            </div>
+        </div>
+
+        <div id="status">SmileNet နှင့် ချိတ်ဆက်နေပါသည်...</div>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrwZdXdT1MQq0jL8q4q8XQG9vJ9U3x9aA",
+            authDomain: "smile-e79cf.firebaseapp.com",
+            databaseURL: "https://smile-e79cf-default-rtdb.firebaseio.com",
+            projectId: "smile-e79cf",
+            storageBucket: "smile-e79cf.appspot.com",
+            messagingSenderId: "154885410213",
+            appId: "1:154885410213:web:92fe1dbfeb1cbc6e9cac4c"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const display = document.getElementById('display-num');
+        const dialerSection = document.getElementById('dialer-section');
+        const incomingPanel = document.getElementById('incoming-panel');
+        const inCallPanel = document.getElementById('in-call-panel');
+        const timerDisplay = document.getElementById('timer');
+        const remoteAudio = document.getElementById('remoteAudio');
+        const speakerBtn = document.getElementById('speaker-btn');
+        const speakerText = document.getElementById('speaker-text');
+
+        let peer, localStream, currentCall, incomingCallInstance, callTimerInterval = null, totalSeconds = 0, isSpeakerMuted = false;
+
+        function press(n) { if (display.innerText.length < 6) display.innerText += n; }
+        function delDigit() { display.innerText = display.innerText.slice(0, -1); }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let myId = urlParams.get('my_id');
+        if (!myId) {
+            myId = localStorage.getItem('smilenet_fixed_id_v2') || Math.floor(100000 + Math.random() * 900000).toString();
+            localStorage.setItem('smilenet_fixed_id_v2', myId);
+        }
+
+        peer = new Peer(myId);
+
+        peer.on('open', (id) => {
+            document.getElementById('my-num').innerText = id;
+            document.getElementById('status').innerText = 'ခေါ်ဆိုရန် အဆင်သင့်ဖြစ်ပါပြီ 🟢';
+            const userRef = db.ref('users/' + id);
+            userRef.set({ online: true, last_seen: Date.now() });
+            userRef.onDisconnect().remove();
+        });
+
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(stream => { localStream = stream; })
+            .catch(err => { document.getElementById('status').innerText = 'မိုက်ခရိုဖုန်း Allow ပေးပါ'; });
+
+        peer.on('call', (call) => {
+            incomingCallInstance = call;
+            dialerSection.style.display = 'none';
+            incomingPanel.style.display = 'block';
+            document.getElementById('caller-name').innerText = `နံပါတ် (${call.peer}) မှ ဖုန်းခေါ်နေပါသည်...`;
+        });
+
+        function acceptIncomingCall() {
+            incomingPanel.style.display = 'none';
+            incomingCallInstance.answer(localStream);
+            handleCall(incomingCallInstance);
+        }
+
+        function rejectIncomingCall() {
+            if (incomingCallInstance) incomingCallInstance.close();
+            resetUI();
+        }
+
+        function makeCall() {
+            const targetId = display.innerText.trim();
+            if (targetId.length !== 6) return alert('ခေါ်ဆိုမည့် ၆ လုံးတွဲ နံပါတ်ကို နှိပ်ပါ');
+            document.getElementById('status').innerText = 'ဖုန်းခေါ်နေပါသည်...';
+            const call = peer.call(targetId, localStream);
+            handleCall(call);
+        }
+
+        function handleCall(call) {
+            currentCall = call;
+            dialerSection.style.display = 'none';
+            incomingPanel.style.display = 'none';
+            inCallPanel.style.display = 'block';
+
+            call.on('stream', (remoteStream) => {
+                remoteAudio.srcObject = remoteStream;
+                document.getElementById('status').innerText = 'ချိတ်ဆက်မှု အောင်မြင်သည်';
+                startCallTimer();
+            });
+
+            call.on('close', () => resetUI());
+        }
+
+        function startCallTimer() {
+            totalSeconds = 0;
+            clearInterval(callTimerInterval);
+            callTimerInterval = setInterval(() => {
+                totalSeconds++;
+                const mins = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+                const secs = String(totalSeconds % 60).padStart(2, '0');
+                timerDisplay.innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function toggleSpeaker() {
+            isSpeakerMuted = !isSpeakerMuted;
+            remoteAudio.muted = isSpeakerMuted;
+            speakerBtn.classList.toggle('muted', isSpeakerMuted);
+            speakerText.innerText = isSpeakerMuted ? 'စပီကာ ပိတ်' : 'စပီကာ ဖွင့်';
+        }
+
+        function hangUp() {
+            if (currentCall) currentCall.close();
+            resetUI();
+        }
+
+        function resetUI() {
+            clearInterval(callTimerInterval);
+            dialerSection.style.display = 'block';
+            incomingPanel.style.display = 'none';
+            inCallPanel.style.display = 'none';
+            timerDisplay.innerText = '00:00';
+            document.getElementById('status').innerText = 'ခေါ်ဆိုရန် အဆင်သင့်ဖြစ်ပါပြီ';
+            remoteAudio.muted = false;
+            isSpeakerMuted = false;
+            speakerBtn.classList.remove('muted');
+            speakerText.innerText = 'စပီကာ ဖွင့်';
+        }
+    </script>
+</body>
+</html>
